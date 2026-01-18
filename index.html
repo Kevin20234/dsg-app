@@ -1,106 +1,426 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#16a34a" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#16a34a">
     <title>D.S.G - Djumbai Students Guigui</title>
-    <link rel="manifest" href="manifest.json" />
-    <!-- Favicon simples (evita erros) -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2316a34a'/><text x='50%' y='55%' text-anchor='middle' fill='white' font-size='8' dominant-baseline='middle'>DSG</text></svg>" />
-    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%2316a34a' width='100' height='100'/><text x='50' y='60' text-anchor='middle' fill='white' font-size='40' font-weight='bold'>DSG</text></svg>">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://meet.jit.si/external_api.js"></script>
 </head>
-<body class="bg-gray-50 min-h-screen p-4">
-    <input type="file" id="file-upload" accept="image/*,video/*,.pdf,.doc,.docx" class="mb-6 block" />
-
-    <!-- CORES DA BANDEIRA DA GUINÉ-BISSAU -->
-    <div id="preview-container" class="mb-6 flex items-center gap-2">
-        <div class="w-5 h-5 rounded-full bg-red-600"></div>      <!-- Vermelho -->
-        <div class="w-5 h-5 rounded-full bg-yellow-400"></div>   <!-- Amarelo -->
-        <div class="w-5 h-5 rounded-full bg-green-600"></div>    <!-- Verde -->
-        <div class="w-5 h-5 rounded-full bg-black"></div>        <!-- Preto -->
-    </div>
-
-    <div id="jitsi-container" class="w-full h-[600px] border rounded mb-6"></div>
+<body>
     <div id="root"></div>
-
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
-        }
-    </script>
-
-    <script>
-        window.storage = {
-            get: async (k, u) => u ? {value: localStorage.getItem(k)} : null,
-            set: async (k, v, u) => u && localStorage.setItem(k, v)
-        };
-
-        const uploadFile = async (file) => {
-            if (!file) return;
-            const r = new FileReader();
-            r.onload = async (e) => {
-                const d = {name: file.name, type: file.type,  e.target.result, timestamp: new Date().toISOString()};
-                const f = await window.storage.get('dsg_files', true);
-                const list = f ? JSON.parse(f.value) : [];
-                list.push(d);
-                await window.storage.set('dsg_files', JSON.stringify(list), true);
-                const c = document.getElementById('preview-container');
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.src = d.data;
-                    img.className = 'max-w-xs rounded shadow';
-                    c.innerHTML = '';
-                    c.appendChild(img);
-                } else {
-                    c.innerHTML = `<p class="text-sm">Arquivo: ${file.name}</p>`;
-                }
-            };
-            r.readAsDataURL(file);
-        };
-
-        const startMeeting = (room) => {
-            const el = document.getElementById('jitsi-container');
-            el.innerHTML = '';
-            new JitsiMeetExternalAPI('meet.jit.si', {
-                roomName: `DSG-${room}`,
-                width: '100%',
-                height: 600,
-                parentNode: el
-            });
-        };
-
-        document.getElementById('file-upload').addEventListener('change', e => e.target.files[0] && uploadFile(e.target.files[0]));
-    </script>
-
     <script type="text/babel">
-        function DSGStudentsApp() {
-            const [room, setRoom] = React.useState('');
+        const { useState, useEffect, useRef } = React;
+        
+        const Icon = ({ name, size = 24 }) => {
+            const ref = useRef(null);
+            useEffect(() => {
+                if (ref.current && lucide[name]) {
+                    lucide.createIcons({ icons: { [name]: lucide[name] }, attrs: { width: size, height: size }, nameAttr: 'data-lucide' });
+                }
+            }, [name, size]);
+            return <i data-lucide={name} ref={ref}></i>;
+        };
+
+        function App() {
+            const [view, setView] = useState('home');
+            const [menu, setMenu] = useState(false);
+            const [students, setStudents] = useState([]);
+            const [chats, setChats] = useState([]);
+            const [chat, setChat] = useState(null);
+            const [msg, setMsg] = useState('');
+            const [user, setUser] = useState(null);
+            const [meeting, setMeeting] = useState(null);
+            const fileRef = useRef(null);
+
+            useEffect(() => {
+                const u = localStorage.getItem('dsg_user');
+                const s = localStorage.getItem('dsg_students');
+                const c = localStorage.getItem('dsg_chats');
+                if (u) setUser(JSON.parse(u));
+                if (s) setStudents(JSON.parse(s));
+                if (c) setChats(JSON.parse(c));
+                lucide.createIcons();
+            }, []);
+
+            const save = (k, d) => localStorage.setItem(k, JSON.stringify(d));
+
+            const Nav = () => (
+                <nav className="bg-green-600 text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-lg">
+                    <div className="flex items-center gap-2">
+                        <div className="bg-white text-green-600 rounded-full w-10 h-10 flex items-center justify-center font-bold">DSG</div>
+                        <span className="font-bold text-lg">Djumbai Students</span>
+                    </div>
+                    <button onClick={() => setMenu(!menu)} className="p-2"><Icon name={menu ? "x" : "menu"} /></button>
+                </nav>
+            );
+
+            const Menu = () => menu && (
+                <div className="bg-white shadow-lg absolute top-16 right-4 rounded-lg p-4 z-40 w-64">
+                    {[
+                        ['home', 'Início'], ['chat', 'Chat'], ['students', 'Estudantes'],
+                        ['meetings', 'Reuniões'], ['agenda', 'Agenda'], ['ai', 'Assistente IA'], ['profile', 'Perfil']
+                    ].map(([v, n]) => (
+                        <button key={v} onClick={() => { setView(v); setMenu(false); }} className="flex items-center gap-3 p-3 hover:bg-gray-100 rounded w-full">
+                            <Icon name={v === 'home' ? 'home' : v === 'chat' ? 'message-circle' : v === 'students' ? 'users' : v === 'meetings' ? 'video' : v === 'agenda' ? 'calendar' : v === 'ai' ? 'book-open' : 'settings'} size={20} /> {n}
+                        </button>
+                    ))}
+                </div>
+            );
+            const Home = () => (
+                <div className="p-4">
+                    <div className="bg-gradient-to-r from-green-500 to-green-700 text-white p-6 rounded-lg mb-6">
+                        <h2 className="text-2xl font-bold mb-2">Bem-vindo ao D.S.G!</h2>
+                        <p>Conectando estudantes guineenses na Rússia</p>
+                        {user && <p className="mt-2 text-sm">Olá, {user.name}!</p>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-white p-4 rounded-lg shadow">
+                            <Icon name="users" size={32} className="text-green-600 mb-2" />
+                            <h3 className="font-bold text-2xl">{students.length}</h3>
+                            <p className="text-gray-600 text-sm">Estudantes</p>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg shadow">
+                            <Icon name="message-circle" size={32} className="text-blue-600 mb-2" />
+                            <h3 className="font-bold text-2xl">{chats.length}</h3>
+                            <p className="text-gray-600 text-sm">Chats</p>
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        {[
+                            ['chat', 'green', 'message-circle', 'Abrir Chat'],
+                            ['students', 'blue', 'users', 'Ver Estudantes'],
+                            ['meetings', 'purple', 'video', 'Reuniões Online'],
+                            ['ai', 'orange', 'book-open', 'Assistente IA']
+                        ].map(([v, c, i, t]) => (
+                            <button key={v} onClick={() => setView(v)} className={`w-full bg-${c}-600 text-white p-4 rounded-lg flex items-center justify-between hover:bg-${c}-700`}>
+                                <span className="flex items-center gap-3"><Icon name={i} /> {t}</span>
+                                <Icon name="chevron-right" />
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+            const Chat = () => {
+                const [newGroup, setNewGroup] = useState('');
+                const [show, setShow] = useState(false);
+
+                const create = () => {
+                    if (!newGroup.trim()) return;
+                    const c = { id: Date.now() + '', name: newGroup, type: 'group', messages: [], members: [user?.id], created: new Date().toISOString() };
+                    const updated = [...chats, c];
+                    setChats(updated);
+                    save('dsg_chats', updated);
+                    setNewGroup('');
+                    setShow(false);
+                };
+
+                const send = () => {
+                    if (!msg.trim() || !chat) return;
+                    const m = { id: Date.now() + '', type: 'text', text: msg, sender: user?.name || 'Anônimo', timestamp: new Date().toISOString() };
+                    const updated = chats.map(c => c.id === chat.id ? { ...c, messages: [...(c.messages || []), m] } : c);
+                    setChats(updated);
+                    save('dsg_chats', updated);
+                    setMsg('');
+                };
+
+                const upload = async (file) => {
+                    if (!file || !chat) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const m = { id: Date.now() + '', type: 'file', file: { name: file.name, type: file.type, data: e.target.result }, sender: user?.name || 'Anônimo', timestamp: new Date().toISOString() };
+                        const updated = chats.map(c => c.id === chat.id ? { ...c, messages: [...(c.messages || []), m] } : c);
+                        setChats(updated);
+                        save('dsg_chats', updated);
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                if (chat) {
+                    return (
+                        <div className="flex flex-col h-screen">
+                            <div className="bg-green-600 text-white p-4 flex items-center gap-3">
+                                <button onClick={() => setChat(null)} className="p-2"><Icon name="x" size={24} /></button>
+                                <div>
+                                    <h3 className="font-bold">{chat.name}</h3>
+                                    <p className="text-sm opacity-80">{chat.members?.length || 0} membros</p>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                                {chat.messages?.map(m => (
+                                    <div key={m.id} className="mb-3 bg-white p-3 rounded-lg shadow-sm">
+                                        <div className="font-bold text-sm text-green-600">{m.sender}</div>
+                                        {m.type === 'text' && <div className="text-gray-800">{m.text}</div>}
+                                        {m.type === 'file' && m.file && (
+                                            m.file.type.startsWith('image/') ? <img src={m.file.data} alt={m.file.name} className="max-w-[200px] rounded mt-2" /> :
+                                            <a href={m.file.data} download={m.file.name} className="text-blue-600 underline"><Icon name="file" size={16} className="inline" /> {m.file.name}</a>
+                                        )}
+                                        <div className="text-xs text-gray-500 mt-1">{new Date(m.timestamp).toLocaleString('pt-BR')}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="bg-white p-4 border-t">
+                                <div className="flex gap-2 mb-2">
+                                    <button onClick={() => fileRef.current?.click()} className="p-2 bg-gray-100 rounded-lg"><Icon name="paperclip" size={20} /></button>
+                                    <button onClick={() => fileRef.current?.click()} className="p-2 bg-gray-100 rounded-lg"><Icon name="image" size={20} /></button>
+                                    <input type="file" ref={fileRef} onChange={(e) => upload(e.target.files[0])} accept="image/*,video/*,audio/*,.pdf,.doc,.docx" className="hidden" />
+                                </div>
+                                <div className="flex gap-2">
+                                    <input type="text" value={msg} onChange={(e) => setMsg(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && send()} placeholder="Digite..." className="flex-1 border rounded-lg px-4 py-2" />
+                                    <button onClick={send} className="bg-green-600 text-white p-2 rounded-lg"><Icon name="send" size={24} /></button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="p-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-2xl font-bold">Chats</h2>
+                            <button onClick={() => setShow(!show)} className="bg-green-600 text-white p-3 rounded-full"><Icon name="plus" size={24} /></button>
+                        </div>
+                        {show && (
+                            <div className="bg-white p-4 rounded-lg shadow mb-4">
+                                <input type="text" value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder="Nome do grupo..." className="w-full border rounded-lg px-4 py-2 mb-2" />
+                                <button onClick={create} className="w-full bg-green-600 text-white py-2 rounded-lg">Criar Grupo</button>
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            {chats.map(c => (
+                                <div key={c.id} onClick={() => setChat(c)} className="bg-white p-4 rounded-lg shadow cursor-pointer hover:bg-gray-50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-green-100 p-3 rounded-full"><Icon name="users" size={24} className="text-green-600" /></div>
+                                        <div className="flex-1">
+                                            <h3 className="font-bold">{c.name}</h3>
+                                            <p className="text-sm text-gray-600">{c.messages?.length || 0} mensagens</p>
+                                        </div>
+                                        <Icon name="chevron-right" className="text-gray-400" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            const Students = () => {
+                const [form, setForm] = useState({ name: '', email: '', university: '', course: '', city: '', position: '' });
+                const [show, setShow] = useState(false);
+
+                const add = () => {
+                    if (!form.name || !form.email) return alert('Nome e email obrigatórios');
+                    const s = { id: Date.now() + '', ...form, registered: new Date().toISOString() };
+                    const updated = [...students, s];
+                    setStudents(updated);
+                    save('dsg_students', updated);
+                    if (form.course) {
+                        const exists = chats.find(c => c.name.toLowerCase() === `curso: ${form.course.toLowerCase()}`);
+                        if (!exists) {
+                            const c = { id: `course-${Date.now()}`, name: `Curso: ${form.course}`, type: 'course', messages: [], members: [s.id], created: new Date().toISOString() };
+                            const updatedChats = [...chats, c];
+                            setChats(updatedChats);
+                            save('dsg_chats', updatedChats);
+                        }
+                    }
+                    setForm({ name: '', email: '', university: '', course: '', city: '', position: '' });
+                    setShow(false);
+                };
+
+                const grouped = students.reduce((acc, s) => {
+                    const c = s.course || 'Outros';
+                    if (!acc[c]) acc[c] = [];
+                    acc[c].push(s);
+                    return acc;
+                }, {});
+
+                return (
+                    <div className="p-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-2xl font-bold">Estudantes ({students.length})</h2>
+                            <button onClick={() => setShow(!show)} className="bg-green-600 text-white p-3 rounded-full"><Icon name="plus" size={24} /></button>
+                        </div>
+                        {show && (
+                            <div className="bg-white p-4 rounded-lg shadow mb-4">
+                                <h3 className="font-bold mb-3">Adicionar Estudante</h3>
+                                {['name', 'email', 'university', 'course', 'city', 'position'].map(f => (
+                                    <input key={f} type={f === 'email' ? 'email' : 'text'} placeholder={f === 'name' ? 'Nome *' : f === 'email' ? 'Email *' : f.charAt(0).toUpperCase() + f.slice(1)} value={form[f]} onChange={(e) => setForm({ ...form, [f]: e.target.value })} className="w-full border rounded px-3 py-2 mb-2" />
+                                ))}
+                                <button onClick={add} className="w-full bg-green-600 text-white py-2 rounded-lg">Adicionar</button>
+                            </div>
+                        )}
+                        <div className="space-y-4">
+                            {Object.entries(grouped).map(([course, list]) => (
+                                <div key={course} className="bg-white rounded-lg shadow p-4">
+                                    <h3 className="font-bold text-lg mb-3 text-green-600">{course} ({list.length})</h3>
+                                    {list.map(s => (
+                                        <div key={s.id} className="border-b last:border-b-0 py-3">
+                                            <div className="font-bold">{s.name}</div>
+                                            <div className="text-sm text-gray-600">{s.university}</div>
+                                            <div className="text-sm text-gray-600">{s.city}</div>
+                                            {s.position && <div className="text-sm text-green-600">{s.position}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+            const Meetings = () => {
+                const [name, setName] = useState('');
+
+                const start = () => {
+                    if (!name.trim()) return alert('Digite um nome');
+                    setMeeting(`DSG-${name}-${Date.now()}`);
+                    setTimeout(() => {
+                        new JitsiMeetExternalAPI('meet.jit.si', {
+                            roomName: meeting,
+                            width: '100%',
+                            height: 600,
+                            parentNode: document.querySelector('#jitsi-container'),
+                            userInfo: { displayName: user?.name || 'Estudante' }
+                        });
+                    }, 100);
+                };
+
+                if (meeting) {
+                    return (
+                        <div className="p-4">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-2xl font-bold">Reunião Online</h2>
+                                <button onClick={() => setMeeting(null)} className="bg-red-600 text-white px-4 py-2 rounded-lg">Sair</button>
+                            </div>
+                            <div id="jitsi-container"></div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="p-4">
+                        <h2 className="text-2xl font-bold mb-4">Reuniões Online</h2>
+                        <div className="bg-white p-4 rounded-lg shadow mb-4">
+                            <h3 className="font-bold mb-3">Iniciar Nova Reunião</h3>
+                            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da reunião..." className="w-full border rounded-lg px-4 py-2 mb-3" />
+                            <button onClick={start} className="w-full bg-green-600 text-white py-3 rounded-lg">Iniciar</button>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                            <h4 className="font-bold mb-2">Recursos da Reunião:</h4>
+                            <ul className="text-sm space-y-1">
+                                <li>✓ Vídeo e áudio em tempo real</li>
+                                <li>✓ Compartilhamento de tela</li>
+                                <li>✓ Chat integrado</li>
+                                <li>✓ Gravação disponível</li>
+                                <li>✓ Até 100 participantes</li>
+                            </ul>
+                        </div>
+                    </div>
+                );
+            };
+            const AI = () => {
+                const [q, setQ] = useState('');
+                const [r, setR] = useState('');
+                const [loading, setLoading] = useState(false);
+
+                const ask = async () => {
+                    if (!q.trim()) return;
+                    setLoading(true);
+                    try {
+                        const res = await fetch("https://api.anthropic.com/v1/messages", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                model: "claude-sonnet-4-20250514",
+                                max_tokens: 1000,
+                                messages: [{ role: "user", content: `Você é assistente para estudantes guineenses na Rússia. Responda em português de forma clara e prática:\n\n${q}` }]
+                            })
+                        });
+                        const data = await res.json();
+                        setR(data.content[0].text);
+                    } catch { setR('Erro ao processar. Verifique sua conexão e tente novamente.'); }
+                    setLoading(false);
+                };
+                return (
+                    <div className="p-4">
+                        <h2 className="text-2xl font-bold mb-4">Assistente IA</h2>
+                        <div className="bg-white p-4 rounded-lg shadow mb-4">
+                            <p className="text-gray-600 mb-3">Pergunte sobre:</p>
+                            <ul className="text-sm text-gray-700 space-y-1 mb-3">
+                                <li>• Documentação necessária na Rússia</li>
+                                <li>• Procedimentos de registro</li>
+                                <li>• Recursos educacionais e bibliotecas</li>
+                                <li>• Vida prática na Rússia</li>
+                            </ul>
+                        </div>
+                        <div className="bg-white p-4 rounded-lg shadow">
+                            <textarea value={q} onChange={(e) => setQ(e.target.value)} placeholder="Digite sua pergunta..." className="w-full border rounded-lg p-3 mb-3 h-24" />
+                            <button onClick={ask} disabled={loading} className="w-full bg-purple-600 text-white py-3 rounded-lg disabled:bg-gray-400">{loading ? 'Processando...' : 'Perguntar'}</button>
+                        </div>
+                        {loading && <div className="mt-4 text-center"><div className="inline-block w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>}
+                        {r && <div className="bg-white p-4 rounded-lg shadow mt-4"><h3 className="font-bold mb-2 flex items-center gap-2"><Icon name="lightbulb" size={20} className="text-yellow-500" />Resposta:</h3><p className="text-gray-700 whitespace-pre-line">{r}</p></div>}
+                    </div>
+                );
+            };
+            const Profile = () => {
+                const [p, setP] = useState(user || { name: '', email: '', university: '', course: '', city: '', position: '' });
+
+                const saveProfile = () => {
+                    if (!p.name || !p.email) return alert('Nome e email obrigatórios');
+                    setUser(p);
+                    save('dsg_user', p);
+                    alert('Perfil salvo com sucesso!');
+                };
+
+                return (
+                    <div className="p-4">
+                        <h2 className="text-2xl font-bold mb-4">Meu Perfil</h2>
+                        <div className="bg-white p-4 rounded-lg shadow">
+                            <div className="mb-4 text-center">
+                                <div className="bg-green-100 w-24 h-24 rounded-full mx-auto flex items-center justify-center text-4xl font-bold text-green-600">{p.name?.charAt(0)?.toUpperCase() || '?'}</div>
+                            </div>
+                            {['name', 'email', 'university', 'course', 'city', 'position'].map(f => (
+                                <input key={f} type={f === 'email' ? 'email' : 'text'} placeholder={f === 'name' ? 'Nome completo *' : f === 'email' ? 'Email *' : f === 'university' ? 'Universidade' : f === 'course' ? 'Curso' : f === 'city' ? 'Cidade na Rússia' : 'Cargo na Associação'} value={p[f] || ''} onChange={(e) => setP({ ...p, [f]: e.target.value })} className="w-full border rounded px-3 py-2 mb-3" />
+                            ))}
+                            <button onClick={saveProfile} className="w-full bg-green-600 text-white py-3 rounded-lg mb-3">Salvar Perfil</button>
+                            <div className="border-t pt-3 mt-3">
+                                <h3 className="font-bold mb-2">Informações do App</h3>
+                                <p className="text-sm text-gray-600">Versão: 1.0.0</p>
+                                <p className="text-sm text-gray-600">D.S.G - Djumbai Students Guigui</p>
+                                <p className="text-sm text-gray-600">Conectando estudantes guineenses na Rússia</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+            const views = { home: Home, chat: Chat, students: Students, meetings: Meetings, ai: AI, profile: Profile };
+            const Current = views[view] || Home;
+
             return (
-                <div className="mt-6">
-                    <h2 className="text-xl font-bold mb-2">Iniciar Reunião</h2>
-                    <input
-                        type="text"
-                        placeholder="Nome da sala"
-                        value={room}
-                        onChange={e => setRoom(e.target.value)}
-                        className="border p-2 mr-2"
-                    />
-                    <button
-                        onClick={() => startMeeting(room)}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                    >
-                        Entrar na Sala
-                    </button>
+                <div className="min-h-screen bg-gray-50">
+                    <Nav />
+                    <Menu />
+                    <Current />
                 </div>
             );
         }
-        ReactDOM.createRoot(document.getElementById('root')).render(<DSGStudentsApp />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            const sw = `
+                const CACHE = 'dsg-v1';
+                self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/']))));
+                self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+            `;
+            const blob = new Blob([sw], { type: 'application/javascript' });
+            navigator.serviceWorker.register(URL.createObjectURL(blob));
+        }
     </script>
 </body>
 </html>
