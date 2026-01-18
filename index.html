@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#16a34a" />
+    <title>D.S.G - Djumbai Students Guigui</title>
+    <link rel="manifest" href="manifest.json" />
+    <!-- Favicon simples (evita erros) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%2316a34a'/><text x='50%' y='55%' text-anchor='middle' fill='white' font-size='8' dominant-baseline='middle'>DSG</text></svg>" />
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://meet.jit.si/external_api.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+    <input type="file" id="file-upload" accept="image/*,video/*,.pdf,.doc,.docx" class="mb-6 block" />
+
+    <!-- CORES DA BANDEIRA DA GUINÉ-BISSAU -->
+    <div id="preview-container" class="mb-6 flex items-center gap-2">
+        <div class="w-5 h-5 rounded-full bg-red-600"></div>      <!-- Vermelho -->
+        <div class="w-5 h-5 rounded-full bg-yellow-400"></div>   <!-- Amarelo -->
+        <div class="w-5 h-5 rounded-full bg-green-600"></div>    <!-- Verde -->
+        <div class="w-5 h-5 rounded-full bg-black"></div>        <!-- Preto -->
+    </div>
+
+    <div id="jitsi-container" class="w-full h-[600px] border rounded mb-6"></div>
+    <div id="root"></div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
+
+    <script>
+        window.storage = {
+            get: async (k, u) => u ? {value: localStorage.getItem(k)} : null,
+            set: async (k, v, u) => u && localStorage.setItem(k, v)
+        };
+
+        const uploadFile = async (file) => {
+            if (!file) return;
+            const r = new FileReader();
+            r.onload = async (e) => {
+                const d = {name: file.name, type: file.type,  e.target.result, timestamp: new Date().toISOString()};
+                const f = await window.storage.get('dsg_files', true);
+                const list = f ? JSON.parse(f.value) : [];
+                list.push(d);
+                await window.storage.set('dsg_files', JSON.stringify(list), true);
+                const c = document.getElementById('preview-container');
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = d.data;
+                    img.className = 'max-w-xs rounded shadow';
+                    c.innerHTML = '';
+                    c.appendChild(img);
+                } else {
+                    c.innerHTML = `<p class="text-sm">Arquivo: ${file.name}</p>`;
+                }
+            };
+            r.readAsDataURL(file);
+        };
+
+        const startMeeting = (room) => {
+            const el = document.getElementById('jitsi-container');
+            el.innerHTML = '';
+            new JitsiMeetExternalAPI('meet.jit.si', {
+                roomName: `DSG-${room}`,
+                width: '100%',
+                height: 600,
+                parentNode: el
+            });
+        };
+
+        document.getElementById('file-upload').addEventListener('change', e => e.target.files[0] && uploadFile(e.target.files[0]));
+    </script>
+
+    <script type="text/babel">
+        function DSGStudentsApp() {
+            const [room, setRoom] = React.useState('');
+            return (
+                <div className="mt-6">
+                    <h2 className="text-xl font-bold mb-2">Iniciar Reunião</h2>
+                    <input
+                        type="text"
+                        placeholder="Nome da sala"
+                        value={room}
+                        onChange={e => setRoom(e.target.value)}
+                        className="border p-2 mr-2"
+                    />
+                    <button
+                        onClick={() => startMeeting(room)}
+                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                    >
+                        Entrar na Sala
+                    </button>
+                </div>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<DSGStudentsApp />);
+    </script>
+</body>
+</html>
